@@ -1,7 +1,7 @@
 // 把 src/app.html 用密碼加密成 index.html（打開要輸入密碼才解得開）。
 // 用法：node build.mjs            → 會問密碼（輸入時不顯示）
 //      SC_PASSWORD=xxx node build.mjs
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { webcrypto as crypto } from "node:crypto";
 import readline from "node:readline";
 
@@ -27,7 +27,11 @@ const app = readFileSync(new URL("./src/app.html", import.meta.url), "utf8");
 const full = `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex,nofollow"><link rel="icon" type="image/png" href="favicon.png"><link rel="apple-touch-icon" href="apple-touch-icon.png"></head><body>${app}</body></html>`;
 
 const enc = new TextEncoder();
-const salt = crypto.getRandomValues(new Uint8Array(16));
+// 11/24：鹽值固定（存在 src/salt.b64），每天重推時密碼算出的鑰匙不變，「記住」才會跨天有效；IV 每次重產
+const SALT_FILE = new URL("./src/salt.b64", import.meta.url);
+let salt;
+if (existsSync(SALT_FILE)) salt = Uint8Array.from(Buffer.from(readFileSync(SALT_FILE, "utf8").trim(), "base64"));
+else { salt = crypto.getRandomValues(new Uint8Array(16)); writeFileSync(SALT_FILE, Buffer.from(salt).toString("base64")); }
 const iv = crypto.getRandomValues(new Uint8Array(12));
 const base = await crypto.subtle.importKey("raw", enc.encode(pw), "PBKDF2", false, ["deriveKey"]);
 const key = await crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: ITER, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt"]);
